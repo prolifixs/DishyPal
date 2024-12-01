@@ -7,8 +7,10 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
+import { useRouter } from "next/navigation"
 
 export default function SettingsPage() {
+  const router = useRouter()
   const [notifications, setNotifications] = useState({
     email: true,
     push: false,
@@ -56,7 +58,18 @@ export default function SettingsPage() {
               <Label htmlFor="confirm-password">Confirm New Password</Label>
               <Input id="confirm-password" type="password" />
             </div>
-            <Button>Update Account</Button>
+            <div className="pt-4 border-t flex justify-between items-center">
+              <Button>Update Account</Button>
+              <Button 
+                variant="destructive" 
+                onClick={(e) => {
+                  e.preventDefault()
+                  router.push("/login")
+                }}
+              >
+                Logout
+              </Button>
+            </div>
           </form>
         </TabsContent>
         <TabsContent value="notifications">

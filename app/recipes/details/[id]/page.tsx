@@ -304,7 +304,7 @@ export default function RecipePage({ params }: { params: { id: string } }) {
                       </div>
                     </div>
                     <p className="text-muted-foreground mb-4">
-                      A creamy and delicious classic mac and cheese recipe that's perfect for any occasion.
+                      A creamy and delicious classic mac and cheese recipe thats perfect for any occasion.
                       Made with a blend of premium cheeses and topped with a crispy breadcrumb crust.
                     </p>
                     <Button asChild variant="outline" size="sm" className="w-full sm:w-auto">

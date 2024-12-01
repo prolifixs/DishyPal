@@ -30,7 +30,7 @@ const recipeData = {
   servings: 4,
 }
 
-export default function RecipePage({ params }: { params: { id: string } }) {
+export default function RecipePage() {
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-6">

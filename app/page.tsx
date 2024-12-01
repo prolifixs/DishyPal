@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import Image from 'next/image'
 
 interface Timer {
   hours: string;
@@ -125,10 +126,12 @@ export default function DashboardPage() {
               {/* User Info Section */}
               <div className="flex items-center space-x-3">
                 <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
-                  <img 
+                  <Image 
                     src="/placeholder.svg" 
                     alt="User Profile" 
                     className="w-10 h-10 rounded-full"
+                    width={40}
+                    height={40}
                   />
                 </div>
                 <span className="font-medium">John Doe</span>
@@ -187,11 +190,11 @@ export default function DashboardPage() {
               {/* Media Upload Section */}
               <div className="flex items-center space-x-4">
                 <Button variant="outline" className="flex items-center space-x-2">
-                  <img src="/icons/image.svg" alt="Upload" className="w-5 h-5" />
+                  <Image src="/icons/image.svg" alt="Upload" className="w-5 h-5" width={20} height={20} />
                   <span>Photo</span>
                 </Button>
                 <Button variant="outline" className="flex items-center space-x-2">
-                  <img src="/icons/video.svg" alt="Video" className="w-5 h-5" />
+                  <Image src="/icons/video.svg" alt="Video" className="w-5 h-5" width={20} height={20} />
                   <span>Video</span>
                 </Button>
               </div>
@@ -224,7 +227,7 @@ export default function DashboardPage() {
                     <div className="flex items-center justify-between bg-background rounded-lg p-2 hover:bg-muted/50 transition-colors">
                       <div className="flex items-center space-x-3">
                         <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
-                          <img src="/placeholder.svg" alt="Recipe Author" className="w-10 h-10 rounded-full" />
+                          <Image src="/placeholder.svg" alt="Recipe Author" className="w-10 h-10 rounded-full" width={40} height={40} />
                         </div>
                         <div>
                           <p className="text-sm font-medium">Overnight Oats</p>
@@ -378,7 +381,7 @@ export default function DashboardPage() {
               <ScrollArea className="h-[200px]">
                 <div className="space-y-4">
                   <div className="flex items-center">
-                    <img src="/placeholder.svg" alt="Recipe" className="w-12 h-12 rounded-md mr-4" />
+                    <Image src="/placeholder.svg" alt="Recipe" className="w-12 h-12 rounded-md mr-4" width={48} height={48} />
                     <div>
                       <h3 className="font-medium">Pasta Carbonara</h3>
                       <p className="text-sm text-muted-foreground">Italian cuisine</p>
@@ -386,7 +389,7 @@ export default function DashboardPage() {
                   </div>
                   <Separator />
                   <div className="flex items-center">
-                    <img src="/placeholder.svg" alt="Recipe" className="w-12 h-12 rounded-md mr-4" />
+                    <Image src="/placeholder.svg" alt="Recipe" className="w-12 h-12 rounded-md mr-4" width={48} height={48} />
                     <div>
                       <h3 className="font-medium">Chicken Stir Fry</h3>
                       <p className="text-sm text-muted-foreground">Asian cuisine</p>
@@ -394,7 +397,7 @@ export default function DashboardPage() {
                   </div>
                   <Separator />
                   <div className="flex items-center">
-                    <img src="/placeholder.svg" alt="Recipe" className="w-12 h-12 rounded-md mr-4" />
+                    <Image src="/placeholder.svg" alt="Recipe" className="w-12 h-12 rounded-md mr-4" width={48} height={48} />
                     <div>
                       <h3 className="font-medium">Greek Salad</h3>
                       <p className="text-sm text-muted-foreground">Mediterranean cuisine</p>
@@ -412,7 +415,7 @@ export default function DashboardPage() {
               <ScrollArea className="h-[200px]">
                 <div className="space-y-4">
                   <div className="flex items-center">
-                    <img src="/placeholder.svg" alt="Recipe" className="w-12 h-12 rounded-md mr-4" />
+                    <Image src="/placeholder.svg" alt="Recipe" className="w-12 h-12 rounded-md mr-4" width={48} height={48} />
                     <div>
                       <h3 className="font-medium">Avocado Toast</h3>
                       <p className="text-sm text-muted-foreground">Breakfast</p>
@@ -420,7 +423,7 @@ export default function DashboardPage() {
                   </div>
                   <Separator />
                   <div className="flex items-center">
-                    <img src="/placeholder.svg" alt="Recipe" className="w-12 h-12 rounded-md mr-4" />
+                    <Image src="/placeholder.svg" alt="Recipe" className="w-12 h-12 rounded-md mr-4" width={48} height={48} />
                     <div>
                       <h3 className="font-medium">Smoothie Bowl</h3>
                       <p className="text-sm text-muted-foreground">Healthy</p>
@@ -428,7 +431,7 @@ export default function DashboardPage() {
                   </div>
                   <Separator />
                   <div className="flex items-center">
-                    <img src="/placeholder.svg" alt="Recipe" className="w-12 h-12 rounded-md mr-4" />
+                    <Image src="/placeholder.svg" alt="Recipe" className="w-12 h-12 rounded-md mr-4" width={48} height={48} />
                     <div>
                       <h3 className="font-medium">Buddha Bowl</h3>
                       <p className="text-sm text-muted-foreground">Vegan</p>

@@ -142,14 +142,17 @@ export default function ProfilePage() {
 
       <TabsContent value="recipes">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {recipes.map((recipe) => (
+          {recipes.map((recipe, index) => (
             <Link href={`/recipes/details/${recipe.id}`} key={recipe.id}>
               <Card className="overflow-hidden hover:shadow-md transition-shadow duration-200">
                 <div className="relative aspect-[4/3]">
                   <Image
                     src={recipe.image}
                     alt={recipe.title}
-                    fill
+                    width={200}
+                    height={150}
+                    priority={index < 3}
+                    loading={index < 3 ? "eager" : "lazy"}
                     className="object-cover"
                   />
                   <div className="absolute bottom-1 left-1 flex items-center space-x-1">
@@ -234,7 +237,7 @@ export default function ProfilePage() {
 
                         {/* Days of the Week */}
                         <div className="grid grid-cols-4 gap-2 flex-grow">
-                          {weekDates[selectedWeek].map((date, index) => (
+                          {weekDates[selectedWeek as keyof typeof weekDates].map((date, index) => (
                             <Card
                               key={date}
                               className="flex flex-col h-40 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors relative"

@@ -361,7 +361,7 @@ export default function Grocery() {
                         </TableCell>
                         <TableCell>{item.unit}</TableCell>
                         <TableCell>
-                          <Select value={itemVendors[item.id]} onValueChange={(vendor) => handleItemVendorChange(item.id, vendor)}>
+                          <Select value={itemVendors[item.id]} onValueChange={(vendor) => handleItemVendorChange(item.id, vendor as Vendor)}>
                             <SelectTrigger className="w-[120px]">
                               <SelectValue />
                             </SelectTrigger>

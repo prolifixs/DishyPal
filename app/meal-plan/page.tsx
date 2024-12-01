@@ -8,7 +8,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { CalendarIcon } from 'lucide-react'
 
 type Meal = {
   id: number
@@ -30,7 +29,13 @@ export default function MealPlanPage() {
 
   const handleAddMeal = () => {
     if (newMeal.name && newMeal.type && selectedDate) {
-      setMeals([...meals, { id: Date.now(), ...newMeal as Meal, date: selectedDate }])
+      const mealData = {
+        name: newMeal.name,
+        type: newMeal.type,
+        date: selectedDate,
+        id: Date.now()
+      } satisfies Meal
+      setMeals([...meals, mealData])
       setNewMeal({})
     }
   }

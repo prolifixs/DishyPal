@@ -1,0 +1,285 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  username      String?   @unique
+  email         String    @unique
+  bio           String?
+  notifications UserNotificationSettings?
+  devices       Device[]
+  subscription  Subscription?
+  profileImage  String?
+  followers     User[]    @relation("UserFollows")
+  following     User[]    @relation("UserFollows")
+  recipes       Recipe[]
+  posts         Post[]
+  mealPlans     MealPlan[]
+  socialLinks   SocialLink[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Recipe {
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  name            String
+  description     String?
+  cuisine         String?
+  instructions    String
+  videoUrl        String?   @map("video_url")
+  prepTimeHours   Int       @default(0) @map("prep_time_hours")
+  prepTimeMinutes Int       @default(0) @map("prep_time_minutes")
+  cookTimeHours   Int       @default(0) @map("cook_time_hours")
+  cookTimeMinutes Int       @default(0) @map("cook_time_minutes")
+  difficulty      String?
+  calories        Int?
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  
+  // Relations
+  user            User      @relation(fields: [userId], references: [id])
+  ingredients     RecipeIngredient[]
+  presets         RecipePreset[]
+  tasks           RecipeTask[]
+
+  @@map("recipes")
+}
+
+model RecipeIngredient {
+  id          String    @id @default(uuid()) @db.Uuid
+  recipeId    String    @map("recipe_id") @db.Uuid
+  item        String
+  quantity    String
+  alternative String?
+  
+  // Relations
+  recipe      Recipe    @relation(fields: [recipeId], references: [id])
+
+  @@map("recipe_ingredients")
+}
+
+model RecipePreset {
+  id          String    @id @default(uuid()) @db.Uuid
+  recipeId    String    @map("recipe_id") @db.Uuid
+  title       String
+  
+  // Relations
+  recipe      Recipe    @relation(fields: [recipeId], references: [id])
+  timers      RecipeTimer[]
+  steps       RecipePresetStep[]
+
+  @@map("recipe_presets")
+}
+
+model RecipeTimer {
+  id          String    @id @default(uuid()) @db.Uuid
+  presetId    String    @map("preset_id") @db.Uuid
+  hours       Int
+  minutes     Int
+  
+  // Relations
+  preset      RecipePreset @relation(fields: [presetId], references: [id])
+
+  @@map("recipe_timers")
+}
+
+model RecipePresetStep {
+  id          String    @id @default(uuid()) @db.Uuid
+  presetId    String    @map("preset_id") @db.Uuid
+  content     String
+  order       Int
+  
+  // Relations
+  preset      RecipePreset @relation(fields: [presetId], references: [id])
+
+  @@map("recipe_preset_steps")
+}
+
+model RecipeTask {
+  id          String    @id @default(uuid()) @db.Uuid
+  recipeId    String    @map("recipe_id") @db.Uuid
+  
+  // Relations
+  recipe      Recipe    @relation(fields: [recipeId], references: [id])
+  steps       RecipeTaskStep[]
+
+  @@map("recipe_tasks")
+}
+
+model RecipeTaskStep {
+  id          String    @id @default(uuid()) @db.Uuid
+  taskId      String    @map("task_id") @db.Uuid
+  content     String
+  order       Int
+  
+  // Relations
+  task        RecipeTask @relation(fields: [taskId], references: [id])
+
+  @@map("recipe_task_steps")
+}
+
+model Post {
+  id          String    @id @default(cuid())
+  tweet       String
+  likes       Int       @default(0)
+  reposts     Int       @default(0)
+  comments    Int       @default(0)
+  author      User      @relation(fields: [authorId], references: [id])
+  authorId    String
+  meals       Meal[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Meal {
+  id          String    @id @default(cuid())
+  type        MealTime
+  image       String
+  description String
+  post        Post      @relation(fields: [postId], references: [id])
+  postId      String
+  mealPlan    MealPlan? @relation(fields: [mealPlanId], references: [id])
+  mealPlanId  String?
+}
+
+model MealPlan {
+  id        String    @id @default(cuid())
+  date      DateTime
+  user      User      @relation(fields: [userId], references: [id])
+  userId    String
+  meals     Meal[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model SocialLink {
+  id        String    @id @default(cuid())
+  platform  String
+  url       String
+  user      User      @relation(fields: [userId], references: [id])
+  userId    String
+}
+
+enum MealTime {
+  morning
+  afternoon
+  evening
+}
+
+model GroceryInventory {
+  id          Int      @id @default(autoincrement())
+  name        String
+  quantity    Float
+  unit        String
+  expiryDate  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  userId      String   // For user association
+  notes       String?
+  category    String?
+  barcode     String?  // For scanning functionality
+  isDeleted   Boolean  @default(false)
+}
+
+model Vendor {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
+  website     String?
+  isActive    Boolean   @default(true)
+  products    ProductVendor[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Product {
+  id          Int       @id @default(autoincrement())
+  name        String
+  defaultUnit String
+  category    String?
+  barcode     String?
+  vendors     ProductVendor[]
+  shoppingItems ShoppingItem[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model ProductVendor {
+  id          Int      @id @default(autoincrement())
+  productId   Int
+  vendorId    Int
+  price       Float
+  product     Product  @relation(fields: [productId], references: [id])
+  vendor      Vendor   @relation(fields: [vendorId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([productId, vendorId])
+}
+
+model ShoppingList {
+  id          Int       @id @default(autoincrement())
+  userId      String    // For user association
+  name        String?
+  status      ShoppingListStatus @default(DRAFT)
+  items       ShoppingItem[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model ShoppingItem {
+  id            Int          @id @default(autoincrement())
+  shoppingListId Int
+  productId     Int
+  quantity      Float
+  selectedVendorId Int?
+  isPurchased   Boolean      @default(false)
+  shoppingList  ShoppingList @relation(fields: [shoppingListId], references: [id])
+  product       Product      @relation(fields: [productId], references: [id])
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+}
+
+enum ShoppingListStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+model UserNotificationSettings {
+  id           String  @id @default(cuid())
+  userId       String  @unique
+  user         User    @relation(fields: [userId], references: [id])
+  emailEnabled Boolean @default(true)
+  pushEnabled  Boolean @default(false)
+}
+
+model Device {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id])
+  name       String
+  type       String
+  isActive   Boolean   @default(true)
+  lastActive DateTime?
+}
+
+model Subscription {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id])
+  plan            String
+  status          String
+  currentPeriodEnd DateTime
+  amount          Float
+}
