@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
@@ -20,6 +20,9 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import Image from 'next/image'
+import { supabase } from "@/lib/supabaseClient"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { User } from '@supabase/supabase-js'
 
 interface Timer {
   hours: string;
@@ -32,10 +35,14 @@ interface Preset {
   steps: string[];
 }
 
+interface PostData {
+  content: string;
+  tags: string[];
+  // Add other post-related fields as needed
+}
+
 export default function DashboardPage() {
   const [isCreatePostOpen, setIsCreatePostOpen] = useState(false)
-  const [postType, setPostType] = useState("post")
-  const [isExpanded, setIsExpanded] = useState(false)
   const [openPresetModal, setOpenPresetModal] = useState(false)
   const [presetType, setPresetType] = useState('')
   const [preset, setPreset] = useState<Preset>({ 
@@ -46,6 +53,30 @@ export default function DashboardPage() {
   const [presetNotifications, setPresetNotifications] = useState(true)
   const [isStoryModalOpen, setIsStoryModalOpen] = useState(false)
   const [selectedStory, setSelectedStory] = useState("")
+  const [tagInputs, setTagInputs] = useState<string[]>([])
+  const [searchQuery, setSearchQuery] = useState("")
+  const [postData, setPostData] = useState<PostData>({
+    content: '',
+    tags: [],
+  });
+  const [files, setFiles] = useState<File[]>([])
+  const supabase = createClientComponentClient()
+  const [user, setUser] = useState<User | null>(null)
+
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      setUser(user)
+    }
+    getUser()
+  }, [supabase])
+
+  const dummyProfiles = [
+    { id: 1, name: "Sarah Chen", avatar: "/placeholder.svg", username: "@sarahchef" },
+    { id: 2, name: "Mike Johnson", avatar: "/placeholder.svg", username: "@mikecooks" },
+    { id: 3, name: "Emma Davis", avatar: "/placeholder.svg", username: "@emmaeats" },
+    { id: 4, name: "Alex Kim", avatar: "/placeholder.svg", username: "@alexkitchen" },
+  ]
 
   const handleNumberInput = (value: string, setter: (value: string) => void) => {
     const num = parseInt(value)
@@ -113,16 +144,123 @@ export default function DashboardPage() {
     setIsStoryModalOpen(true)
   }
 
+  const handleAddTagInput = () => {
+    if (tagInputs.length < 3) {
+      setTagInputs([...tagInputs, '@'])
+    }
+  }
+
+  const handleRemoveTagInput = (index: number) => {
+    setTagInputs(tagInputs.filter((_, i) => i !== index))
+  }
+
+  const handleTagInputChange = (index: number, value: string) => {
+    const newTagInputs = [...tagInputs];
+    if (!value.includes('@')) {
+      handleRemoveTagInput(index);
+      return;
+    }
+    newTagInputs[index] = value;
+    setTagInputs(newTagInputs);
+    
+    // Update postData tags
+    const newTags = newTagInputs.map(tag => tag.replace('@', '').trim()).filter(Boolean);
+    setPostData(prev => ({ ...prev, tags: newTags }));
+  }
+
+  const handleTextAreaInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    const lastChar = value[value.length - 1];
+    
+    setPostData(prev => ({ ...prev, content: value }));
+    
+    if (lastChar === '@' && tagInputs.length < 3) {
+      setTagInputs([...tagInputs, '@']);
+    }
+  }
+
+  const isExpanded = tagInputs.length > 0
+
+  const handleCreatePost = async () => {
+    try {
+      if (!user) throw new Error('User not authenticated')
+
+      // First upload any media files to Supabase Storage
+      const mediaUrls = []
+      
+      if (files.length > 0) {
+        for (const file of files) {
+          const fileExt = file.name.split('.').pop()
+          const fileName = `${Math.random()}.${fileExt}`
+          const filePath = `${user.id}/${fileName}`
+
+          const { error: uploadError, data } = await supabase.storage
+            .from('post-media')
+            .upload(filePath, file)
+
+          if (uploadError) throw uploadError
+
+          const { data: { publicUrl } } = supabase.storage
+            .from('post-media')
+            .getPublicUrl(filePath)
+
+          mediaUrls.push(publicUrl)
+        }
+      }
+
+      // Create the post
+      const response = await fetch('/api/posts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          content: postData.content,
+          tags: postData.tags,
+          media_urls: mediaUrls.length > 0 ? mediaUrls : undefined,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to create post')
+      }
+
+      // Reset form and close dialog
+      setPostData({ content: '', tags: [] })
+      setFiles([])
+      setIsCreatePostOpen(false)
+      
+      // Optionally refresh the posts list
+      
+    } catch (error) {
+      console.error('Error creating post:', error)
+      // Show error message to user
+    }
+  }
+
   return (
     <>
       <Dialog open={isCreatePostOpen} onOpenChange={setIsCreatePostOpen}>
-        <DialogContent className={`${isExpanded ? 'sm:max-w-[900px]' : 'sm:max-w-[525px]'} transition-all duration-200`}>
-          <DialogHeader>
+        <DialogContent 
+          className={`transition-all duration-200 ease-in-out ${
+            isExpanded ? "sm:max-w-[900px]" : "sm:max-w-[525px]"
+          }`}
+        >
+          <DialogHeader className="flex flex-row justify-between items-center">
             <DialogTitle>Create New Post</DialogTitle>
+            {isExpanded && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setTagInputs([])}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
           </DialogHeader>
-          <div className="flex gap-4">
+          <div className={`flex ${isExpanded ? 'gap-6' : 'gap-4'}`}>
             {/* Left Side - Post Creation */}
-            <div className="flex-1 space-y-4">
+            <div className={`${isExpanded ? 'w-2/3' : 'flex-1'} space-y-4`}>
               {/* User Info Section */}
               <div className="flex items-center space-x-3">
                 <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
@@ -137,109 +275,129 @@ export default function DashboardPage() {
                 <span className="font-medium">John Doe</span>
               </div>
 
-              {/* Post Type Selector */}
-              <select 
-                className="w-full rounded-md border border-input bg-background px-3 py-2"
-                onChange={(e) => {
-                  setPostType(e.target.value);
-                  setIsExpanded(false);
-                }}
-                value={postType}
-              >
-                <option value="post">Regular Post</option>
-                <option value="mealplan">Meal Plan</option>
-                <option value="recipe">Recipe</option>
-              </select>
-
               {/* Post Content Area */}
-              <textarea
-                className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 resize-none"
-                placeholder="What's cooking in your kitchen?"
-              />
-
-              {/* Meal Plan Fields */}
-              {postType === "mealplan" && (
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-sm font-medium mb-1 block">Breakfast</label>
-                    <textarea
-                      className="w-full min-h-[60px] rounded-md border border-input bg-background px-3 py-2 resize-none"
-                      placeholder="What's for breakfast?"
-                      onFocus={() => setIsExpanded(true)}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium mb-1 block">Lunch</label>
-                    <textarea
-                      className="w-full min-h-[60px] rounded-md border border-input bg-background px-3 py-2 resize-none"
-                      placeholder="What's for lunch?"
-                      onFocus={() => setIsExpanded(true)}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium mb-1 block">Dinner</label>
-                    <textarea
-                      className="w-full min-h-[60px] rounded-md border border-input bg-background px-3 py-2 resize-none"
-                      placeholder="What's for dinner?"
-                      onFocus={() => setIsExpanded(true)}
-                    />
-                  </div>
+              <div className="relative">
+                <textarea
+                  className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 resize-none"
+                  placeholder="What's cooking in your kitchen?"
+                  onInput={handleTextAreaInput}
+                />
+                <div className="absolute bottom-2 right-2 flex space-x-2">
+                  <button 
+                    className="p-1.5 hover:bg-muted rounded-md transition-colors"
+                    onClick={handleAddTagInput}
+                    disabled={tagInputs.length >= 3}
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="w-5 h-5"
+                    >
+                      <path d="M20 12H4" />
+                      <path d="M12 4v16" />
+                    </svg>
+                  </button>
+                  <button className="p-1.5 hover:bg-muted rounded-md transition-colors">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="w-5 h-5"
+                    >
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                      <circle cx="8.5" cy="8.5" r="1.5" />
+                      <path d="M21 15l-5-5L5 21" />
+                    </svg>
+                  </button>
+                  <button className="p-1.5 hover:bg-muted rounded-md transition-colors">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="w-5 h-5"
+                    >
+                      <path d="M23 7l-7 5 7 5V7z" />
+                      <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+                    </svg>
+                  </button>
                 </div>
-              )}
-
-              {/* Media Upload Section */}
-              <div className="flex items-center space-x-4">
-                <Button variant="outline" className="flex items-center space-x-2">
-                  <Image src="/icons/image.svg" alt="Upload" className="w-5 h-5" width={20} height={20} />
-                  <span>Photo</span>
-                </Button>
-                <Button variant="outline" className="flex items-center space-x-2">
-                  <Image src="/icons/video.svg" alt="Video" className="w-5 h-5" width={20} height={20} />
-                  <span>Video</span>
-                </Button>
+                
+                {tagInputs.length > 0 && (
+                  <div className="absolute bottom-12 right-2 bg-background border rounded-md shadow-sm">
+                    {tagInputs.map((tag, index) => (
+                      <div key={index} className="flex items-center p-2">
+                        <input
+                          type="text"
+                          className="border-none focus:outline-none text-sm placeholder:text-muted-foreground/70 w-full bg-transparent"
+                          placeholder="breakfast, recipe, burrito..."
+                          value={tag}
+                          onChange={(e) => handleTagInputChange(index, e.target.value)}
+                        />
+                        <button 
+                          className="ml-2 p-1 hover:bg-muted rounded-md"
+                          onClick={() => handleRemoveTagInput(index)}
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Right Side - Recipe Search */}
+            {/* Right Side - User Profiles (Only visible when expanded) */}
             {isExpanded && (
-              <div className="w-[350px] border-l pl-4">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-medium">Search Recipes</h3>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={() => setIsExpanded(false)}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
+              <div className="w-1/3 space-y-4">
+                <div className="relative">
+                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search users..."
+                    className="pl-8"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
                 </div>
-                <div className="space-y-4">
-                  <div className="flex items-center space-x-2 bg-muted/40 rounded-lg p-2">
-                    <Search className="h-4 w-4 text-muted-foreground" />
-                    <input
-                      type="text"
-                      placeholder="Search recipes..."
-                      className="bg-transparent flex-1 outline-none text-sm"
-                    />
-                  </div>
-                  {/* Example Recipe Cards */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between bg-background rounded-lg p-2 hover:bg-muted/50 transition-colors">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
-                          <Image src="/placeholder.svg" alt="Recipe Author" className="w-10 h-10 rounded-full" width={40} height={40} />
+                <div className="space-y-2">
+                  {dummyProfiles.map((profile) => (
+                    <div
+                      key={profile.id}
+                      className="flex items-center space-x-3 p-2 rounded-lg hover:bg-muted cursor-pointer"
+                    >
+                      <Image
+                        src={profile.avatar}
+                        alt={profile.name}
+                        className="w-10 h-10 rounded-full"
+                        width={40}
+                        height={40}
+                      />
+                      <div>
+                        <div className="font-medium">{profile.name}</div>
+                        <div className="text-sm text-muted-foreground">
+                          {profile.username}
                         </div>
-                        <div>
-                          <p className="text-sm font-medium">Overnight Oats</p>
-                          <p className="text-xs text-muted-foreground">by Jane Smith</p>
-                        </div>
-                      </div>
-                      <div className="flex space-x-2">
-                        <Button size="sm" variant="outline">Replate</Button>
-                        <Button size="sm" variant="outline">Remix</Button>
                       </div>
                     </div>
-                  </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -248,7 +406,7 @@ export default function DashboardPage() {
             <Button variant="outline" onClick={() => setIsCreatePostOpen(false)}>
               Cancel
             </Button>
-            <Button>Create Post</Button>
+            <Button onClick={handleCreatePost}>Create Post</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
