@@ -4,7 +4,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useState, useRef, useEffect } from 'react'
 import * as LucideIcons from 'lucide-react'
-import { MessageCircle, ThumbsUp, MoreVertical, ArrowLeft, Sun, Cloud, Moon, MoreHorizontal, Heart, Repeat2 } from 'lucide-react'
+import { MessageCircle, ThumbsUp, MoreVertical, ArrowLeft, Sun, Cloud, Moon, MoreHorizontal, Heart, Repeat2, Bookmark, Clock, Flame, Users } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -22,7 +22,11 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { UserPostDetail } from "@/components/user-post-detail"
+import  UserPostDetail  from "@/components/user-post-detail"
+import { createClientComponentClient, User } from '@supabase/auth-helpers-nextjs'
+import { useRouter } from 'next/navigation'
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 
 const weekDates = {
   'Wk1': ['Nov 1', 'Nov 12', 'Nov 3', 'Nov 4', 'Nov 5', 'Nov 6', 'Nov 7'],
@@ -75,10 +79,212 @@ const samplePosts: PostData[] = [
   // ... add more sample posts
 ]
 
+interface Post {
+  id: string;
+  content: string;
+  created_at: string;
+  meals?: {
+    morning?: { image_url?: string; description?: string };
+    afternoon?: { image_url?: string; description?: string };
+    evening?: { image_url?: string; description?: string };
+  };
+  likes_count: number;
+  comments_count: number;
+  reposts_count: number;
+  user_id: string;
+  users: {
+    username: string;
+    avatar_url: string;
+  };
+}
+
+interface SocialLink {
+  name: string
+  url: string
+}
+
+type ExtendedUser = User & {
+  username?: string | null
+  avatar_url?: string | null
+  social_links?: SocialLink[] | null
+  followers_count?: number
+  post_count?: number
+  recipe_count?: number
+  description?: string
+}
+
+// Add this interface based on our new schema
+interface Recipe {
+  id: string;
+  name: string;
+  description: string;
+  cuisine: string;
+  prep_time_hours: number;
+  prep_time_minutes: number;
+  cook_time_hours: number;
+  cook_time_minutes: number;
+  difficulty: 'Easy' | 'Medium' | 'Hard';
+  servings: number;
+  calories: number;
+  main_image_url: string;
+  created_at: string;
+  likes_count?: number;
+  saves_count?: number;
+  user: {
+    username: string;
+    avatar_url: string;
+  };
+}
+
 export default function ProfilePage() {
+  const router = useRouter()
+  const [user, setUser] = useState<ExtendedUser | null>(null)
+  const [posts, setPosts] = useState<Post[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [selectedWeek, setSelectedWeek] = useState('Wk1')
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [isReplateDialogOpen, setIsReplateDialogOpen] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
+  const [editForm, setEditForm] = useState({
+    username: '',
+    bio: '',
+    avatar_url: '',
+    social_links: [] as SocialLink[]
+  })
+  const [recipes, setRecipes] = useState<Recipe[]>([])
+  const supabase = createClientComponentClient()
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const supabase = createClientComponentClient()
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+
+        if (sessionError || !session?.user) {
+          router.push('/signin')
+          return
+        }
+
+        // First get the user data - add social_links to the select query
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select(`
+            username,
+            avatar_url,
+            bio,
+            social_links
+          `)
+          .eq('id', session.user.id)
+          .single()
+
+        if (userError) {
+          console.error('User data error:', userError)
+          setError(userError.message)
+          return
+        }
+
+        // Then get the counts separately
+        const [followersCount, postsCount, recipesCount] = await Promise.all([
+          supabase
+            .from('user_follows')
+            .select('*', { count: 'exact', head: true })
+            .eq('following_id', session.user.id),
+          supabase
+            .from('posts')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', session.user.id),
+          supabase
+            .from('recipes')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', session.user.id)
+        ])
+
+        // Set user data with counts and ensure social_links is properly initialized
+        setUser({
+          ...session.user,
+          username: userData?.username || '',
+          avatar_url: userData?.avatar_url || '',
+          description: userData?.bio || 'No bio yet',
+          social_links: userData?.social_links || [], // Ensure this is properly initialized
+          followers_count: followersCount.count || 0,
+          post_count: postsCount.count || 0,
+          recipe_count: recipesCount.count || 0,
+        } as ExtendedUser)
+
+        // Fetch posts with proper typing
+        const { data: postsData, error: postsError } = await supabase
+          .from('posts')
+          .select(`
+            *,
+            user:users!user_id(
+              username,
+              avatar_url
+            )
+          `)
+          .eq('user_id', session.user.id)
+          .order('created_at', { ascending: false });
+
+        if (postsError) {
+          console.error('Posts fetch error:', postsError)
+          setError(postsError.message)
+          return
+        }
+
+        // Transform the data to match the Post type
+        const transformedPosts = postsData?.map(post => ({
+          ...post,
+          users: post.user // Rename user to users to match interface
+        })) || [];
+
+        setPosts(transformedPosts);
+
+      } catch (e) {
+        console.error('Unexpected error:', e)
+        setError('An unexpected error occurred')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchUser()
+  }, [router])
+
+  useEffect(() => {
+    const fetchRecipes = async () => {
+      if (!user?.id) return
+
+      const { data, error } = await supabase
+        .from('recipes')
+        .select(`
+          *,
+          user:users(username, avatar_url)
+        `)
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Error fetching recipes:', error)
+        return
+      }
+
+      setRecipes(data || [])
+    }
+
+    fetchRecipes()
+  }, [user?.id, supabase])
+
+  if (isLoading) {
+    return <div>Loading...</div>
+  }
+
+  if (error) {
+    return <div>Error: {error}</div>
+  }
+
+  if (!user) {
+    return <div>Please sign in</div>
+  }
 
   const handleReplate = () => {
     setIsReplateDialogOpen(true)
@@ -87,6 +293,84 @@ export default function ProfilePage() {
   const handleSetMyPlans = () => {
     // Implement the logic for setting plans here
     setIsReplateDialogOpen(false)
+  }
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    try {
+      setIsUploading(true)
+      const file = e.target.files?.[0]
+      if (!file) return
+
+      const supabase = createClientComponentClient()
+      
+      // Create a unique file name
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${Math.random()}.${fileExt}`
+      const filePath = `${user?.id}/${fileName}`
+
+      // Upload the file to Supabase storage
+      const { error: uploadError, data } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file)
+
+      if (uploadError) throw uploadError
+
+      // Get the public URL for the uploaded file
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath)
+
+      // Update the form state with the new avatar URL
+      setEditForm(prev => ({ ...prev, avatar_url: publicUrl }))
+
+    } catch (error) {
+      console.error('Error uploading image:', error)
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const handleUpdateProfile = async () => {
+    try {
+      const supabase = createClientComponentClient()
+      
+      // Filter out empty social links before saving
+      const filteredSocialLinks = editForm.social_links.filter(
+        link => link.name.trim() !== '' && link.url.trim() !== ''
+      )
+      
+      const updates = {
+        username: editForm.username,
+        bio: editForm.bio,
+        avatar_url: editForm.avatar_url,
+        social_links: filteredSocialLinks
+      }
+
+      const { error } = await supabase
+        .from('users')
+        .update(updates)
+        .eq('id', user?.id)
+
+      if (error) {
+        console.error('Update error:', error)
+        throw error
+      }
+      
+      // Update local user state
+      setUser(prev => {
+        if (!prev) return null
+        return {
+          ...prev,
+          username: editForm.username,
+          description: editForm.bio,
+          avatar_url: editForm.avatar_url,
+          social_links: filteredSocialLinks
+        }
+      })
+      
+    } catch (error) {
+      console.error('Error updating profile:', error)
+    }
   }
 
   return (
@@ -104,27 +388,152 @@ export default function ProfilePage() {
         <div className="flex-grow">
           <div className="flex justify-between items-start">
             <div>
-              <h1 className="text-2xl font-bold mb-2">John Doe</h1>
+              <h1 className="text-2xl font-bold mb-2">{user?.username}</h1>
               <div className="flex gap-4 text-sm mb-2">
-                <span><strong>1.2k</strong> Foodies</span>
-                <span><strong>20</strong> Craves</span>
-                <span><strong>9</strong> Recipes</span>
+                <span><strong>{user?.followers_count}</strong> Foodies</span>
+                <span><strong>{user?.post_count}</strong> Posts</span>
+                <span><strong>{user?.recipe_count}</strong> Recipes</span>
               </div>
               <div className="text-sm text-muted-foreground">
-                followed by <span className="font-semibold">user</span>, <span className="font-semibold">user</span> and 2+ foodies
+                {user?.description || 'bio is her so i can remove when i create user edit'}
               </div>
             </div>
-            <Button variant="outline" className="rounded-full px-4 py-1 text-sm">
-              Crave Content
-            </Button>
+            <div>
+              <Button variant="outline" className="rounded-full px-4 py-1 text-sm">
+                Crave Content
+              </Button>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button 
+                    variant="ghost" 
+                    className="text-sm text-muted-foreground block mt-2"
+                    onClick={() => setEditForm({
+                      username: user?.username || '',
+                      bio: user?.description || '',
+                      avatar_url: user?.avatar_url || '',
+                      social_links: user?.social_links || []
+                    })}
+                  >
+                    Edit Profile
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[425px]">
+                  <DialogHeader>
+                    <DialogTitle>Edit Profile</DialogTitle>
+                    <DialogDescription>
+                      Make changes to your profile information here.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-4">
+                    <div className="flex items-center gap-4">
+                      <div className="relative">
+                        <Avatar className="h-16 w-16">
+                          <AvatarImage 
+                            src={editForm.avatar_url || user?.avatar_url || '/placeholder.svg'} 
+                            alt="Profile picture"
+                          />
+                          <AvatarFallback>{user?.username?.[0]}</AvatarFallback>
+                        </Avatar>
+                        <Label 
+                          htmlFor="avatar" 
+                          className="absolute bottom-0 right-0 bg-primary text-primary-foreground rounded-full p-1 cursor-pointer hover:bg-primary/90"
+                        >
+                          <LucideIcons.PenSquare className="h-4 w-4" />
+                        </Label>
+                        <Input 
+                          id="avatar" 
+                          type="file" 
+                          className="hidden" 
+                          accept="image/*"
+                          onChange={handleImageUpload}
+                          disabled={isUploading}
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <Label htmlFor="username">Username</Label>
+                        <Input
+                          id="username"
+                          value={editForm.username}
+                          onChange={(e) => setEditForm(prev => ({ ...prev, username: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="grid gap-2">
+                      <Label htmlFor="bio">Bio</Label>
+                      <Textarea
+                        id="bio"
+                        value={editForm.bio}
+                        onChange={(e) => setEditForm(prev => ({ ...prev, bio: e.target.value }))}
+                        rows={3}
+                      />
+                    </div>
+
+                    <div className="grid gap-2">
+                      <Label>Social Links</Label>
+                      {editForm.social_links.map((link, index) => (
+                        <div key={index} className="flex gap-2">
+                          <Input
+                            placeholder="Platform (e.g., Twitter)"
+                            value={link.name}
+                            onChange={(e) => {
+                              const newLinks = [...editForm.social_links]
+                              newLinks[index] = {
+                                ...newLinks[index],
+                                name: e.target.value
+                              }
+                              setEditForm(prev => ({ ...prev, social_links: newLinks }))
+                            }}
+                          />
+                          <Input
+                            placeholder="URL (e.g., https://twitter.com/...)"
+                            value={link.url}
+                            onChange={(e) => {
+                              const newLinks = [...editForm.social_links]
+                              newLinks[index] = {
+                                ...newLinks[index],
+                                url: e.target.value
+                              }
+                              setEditForm(prev => ({ ...prev, social_links: newLinks }))
+                            }}
+                          />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              const newLinks = editForm.social_links.filter((_, i) => i !== index)
+                              setEditForm(prev => ({ ...prev, social_links: newLinks }))
+                            }}
+                          >
+                            <LucideIcons.X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                      <Button
+                        variant="outline"
+                        onClick={() => setEditForm(prev => ({
+                          ...prev,
+                          social_links: [...prev.social_links, { name: '', url: '' }]
+                        }))}
+                      >
+                        Add Social Link
+                      </Button>
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => {}}>Cancel</Button>
+                    <Button onClick={handleUpdateProfile}>
+                      {isUploading ? 'Uploading...' : 'Update Profile'}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
           </div>
-          <p className="mt-4 text-sm text-muted-foreground">
-            Design development, UX/UI, and product design are all related terms in the field of design, but they refer to slightly different aspects of the design process.
-          </p>
           <div className="flex gap-2 mt-4">
-            {['twitter', 'facebook', 'youtube', 'tiktok', 'snapchat', 'instagram'].map((social) => (
-              <Link key={social} href={`#${social}`} className="text-muted-foreground hover:text-primary">
-                <Image src={`/placeholder.svg?height=16&width=16`} alt={social} width={16} height={16} />
+            {user?.social_links?.map((social) => (
+              <Link key={social.url} href={social.url} className="text-muted-foreground hover:text-primary">
+                <Image src={`/placeholder.svg?height=16&width=16`} alt={social.name} width={16} height={16} />
               </Link>
             ))}
           </div>
@@ -147,26 +556,63 @@ export default function ProfilePage() {
               <Card className="overflow-hidden hover:shadow-md transition-shadow duration-200">
                 <div className="relative aspect-[4/3]">
                   <Image
-                    src={recipe.image}
-                    alt={recipe.title}
+                    src={recipe.main_image_url || '/placeholder.svg'}
+                    alt={recipe.name}
                     width={200}
                     height={150}
                     priority={index < 3}
                     loading={index < 3 ? "eager" : "lazy"}
-                    className="object-cover"
+                    className="object-cover w-full h-full"
                   />
                   <div className="absolute bottom-1 left-1 flex items-center space-x-1">
                     <Button variant="ghost" size="icon" className="h-8 w-8 bg-black/50 hover:bg-black/70">
-                      <LucideIcons.Heart className="h-4 w-4 text-white" />
+                      <Heart className="h-4 w-4 text-white" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 bg-black/50 hover:bg-black/70">
+                      <Bookmark className="h-4 w-4 text-white" />
                     </Button>
                   </div>
-                  <div className="absolute bottom-1 right-1 bg-black/50 text-white px-1 py-0.5 rounded text-xs">
-                    {recipe.time}
+                  <div className="absolute bottom-1 right-1 flex items-center gap-1 bg-black/50 text-white px-2 py-1 rounded text-xs">
+                    <Clock className="h-3 w-3" />
+                    {recipe.prep_time_hours > 0 && `${recipe.prep_time_hours}h `}
+                    {recipe.prep_time_minutes}m
                   </div>
                 </div>
                 <CardContent className="p-4">
-                  <h3 className="font-semibold text-lg mb-1 truncate">{recipe.title}</h3>
-                  <p className="text-sm text-muted-foreground">Craved by {recipe.craves}+ foodies</p>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Badge variant="outline" className="text-xs">
+                      {recipe.cuisine}
+                    </Badge>
+                    <Badge variant="outline" className="text-xs">
+                      {recipe.difficulty}
+                    </Badge>
+                  </div>
+                  <h3 className="font-semibold text-lg mb-1 truncate">{recipe.name}</h3>
+                  <p className="text-sm text-muted-foreground line-clamp-2 mb-2">
+                    {recipe.description}
+                  </p>
+                  <div className="flex items-center justify-between text-sm text-muted-foreground">
+                    <div className="flex items-center gap-2">
+                      <span className="flex items-center gap-1">
+                        <Users className="h-4 w-4" />
+                        {recipe.servings}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Flame className="h-4 w-4" />
+                        {recipe.calories} kcal
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="flex items-center gap-1">
+                        <Heart className="h-4 w-4" />
+                        {recipe.likes_count || 0}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Bookmark className="h-4 w-4" />
+                        {recipe.saves_count || 0}
+                      </span>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             </Link>
@@ -176,9 +622,17 @@ export default function ProfilePage() {
 
       <TabsContent value="posts">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {samplePosts.map((post) => (
-            <PostCard key={post.id} post={post} />
-          ))}
+          {isLoading ? (
+            <div>Loading posts...</div>
+          ) : error ? (
+            <div>Error: {error}</div>
+          ) : posts.length === 0 ? (
+            <div>No posts yet</div>
+          ) : (
+            posts.map((post) => (
+              <PostCard key={post.id} post={post} />
+            ))
+          )}
         </div>
       </TabsContent>
 
@@ -287,15 +741,15 @@ export default function ProfilePage() {
   )
 }
 
-function PostCard({ post }: { post: PostData }) {
+function PostCard({ post }: { post: Post }) {
   const [currentMeal, setCurrentMeal] = useState<MealTime | null>(null)
   const [showMealDetails, setShowMealDetails] = useState(false)
   const cardRef = useRef<HTMLDivElement>(null)
 
   const meals = [
-    { time: 'morning' as MealTime, icon: Sun, description: post.meals.morning.description },
-    { time: 'afternoon' as MealTime, icon: Cloud, description: post.meals.afternoon.description },
-    { time: 'evening' as MealTime, icon: Moon, description: post.meals.evening.description },
+    { time: 'morning' as MealTime, icon: Sun, description: post.meals?.morning?.description || '' },
+    { time: 'afternoon' as MealTime, icon: Cloud, description: post.meals?.afternoon?.description || '' },
+    { time: 'evening' as MealTime, icon: Moon, description: post.meals?.evening?.description || '' },
   ]
 
   const handleMealIconClick = (meal: MealTime, e: React.MouseEvent) => {
@@ -318,7 +772,7 @@ function PostCard({ post }: { post: PostData }) {
       <Card className="overflow-hidden hover:shadow-md transition-shadow duration-200" ref={cardRef}>
         <div className="relative w-full h-48 group">
           <Image
-            src={currentMeal ? post.meals[currentMeal].image : post.meals.morning.image}
+            src={(currentMeal ? post.meals?.[currentMeal]?.image_url : post.meals?.morning?.image_url) || '/placeholder.svg'}
             alt={`${currentMeal || 'morning'} meal`}
             fill
             className="object-cover"
@@ -351,20 +805,22 @@ function PostCard({ post }: { post: PostData }) {
         <CardContent className="p-4">
           <div className="flex items-center gap-4 mb-3">
             <Avatar>
-              <AvatarImage src="/placeholder.svg" />
-              <AvatarFallback>JD</AvatarFallback>
+              <AvatarImage src={post.users.avatar_url} />
+              <AvatarFallback>{post.users.username.charAt(0)}</AvatarFallback>
             </Avatar>
             <div>
-              <h3 className="font-semibold">{post.username}</h3>
-              <p className="text-sm text-muted-foreground">{post.timestamp}</p>
+              <h3 className="font-semibold">{post.users.username}</h3>
+              <p className="text-sm text-muted-foreground">
+                {new Date(post.created_at).toLocaleDateString()}
+              </p>
             </div>
           </div>
-          <p className="text-sm text-gray-700 mb-3">{post.tweet}</p>
+          <p className="text-sm text-gray-700 mb-3">{post.content}</p>
           <Separator className="my-2" />
           <ActionSection 
-            likes={post.likes} 
-            reposts={post.reposts} 
-            comments={post.comments} 
+            likes={post.likes_count} 
+            reposts={post.reposts_count} 
+            comments={post.comments_count} 
           />
         </CardContent>
       </Card>

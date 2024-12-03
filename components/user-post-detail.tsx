@@ -8,9 +8,47 @@ import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { MoreHorizontal, Heart, MessageCircle, Repeat2, Sun, Cloud, Moon, X, UserPlus, BookmarkPlus, Flag, Send } from 'lucide-react'
+import { MoreHorizontal, Heart, MessageCircle, Repeat2, Sun, Cloud, Moon, X, UserPlus, BookmarkPlus, Flag, Send, Share2, Edit, Trash2 } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { useAuth } from '@/lib/auth'
+import { useRouter } from 'next/navigation'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import CreatePostDialog from '@/components/create-post-dialog'
 
 interface UserPostDetailProps {
+  id: number
+  content: string
+  username: string
+  userBio: string
+  profileImage: string
+  likes: number
+  comments: number
+  reposts: number
+  mediaUrls?: string[]
+  tags?: string[]
+  createdAt: string
+  onEdit?: (post: PostData & { id: number }) => void
+}
+
+type MealTime = 'morning' | 'afternoon' | 'evening'
+
+interface Comment {
+  id: string
+  username: string
+  profileImage: string
+  content: string
+  timestamp: string
+}
+
+interface PostData {
+  id: string
   morningImage: string
   afternoonImage: string
   eveningImage: string
@@ -26,65 +64,67 @@ interface UserPostDetailProps {
   comments: number
 }
 
-type MealTime = 'morning' | 'afternoon' | 'evening'
-
 interface Comment {
-  id: string
-  username: string
-  profileImage: string
-  content: string
-  timestamp: string
+  id: string;
+  content: string;
+  created_at: string;
+  user_id: string;
+  profiles?: {
+    username: string;
+    avatar_url?: string;
+  };
 }
 
-export function UserPostDetail({
-  morningImage,
-  afternoonImage,
-  eveningImage,
-  morning,
-  afternoon,
-  evening,
-  profileImage,
+export default function UserPostDetail({
+  id,
+  content,
   username,
   userBio,
-  tweet,
+  profileImage,
   likes,
-  reposts,
   comments,
+  reposts,
+  mediaUrls,
+  tags,
+  createdAt,
+  onEdit
 }: UserPostDetailProps) {
+  const { user } = useAuth()
   const [currentMeal, setCurrentMeal] = useState<MealTime | null>(null)
   const [showDropdown, setShowDropdown] = useState(false)
   const [showMealDetails, setShowMealDetails] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const cardRef = useRef<HTMLDivElement>(null)
+  const router = useRouter()
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [isCreatePostOpen, setIsCreatePostOpen] = useState(false)
+  const [editPostData, setEditPostData] = useState<any>(null)
 
-  const [commentList, setCommentList] = useState<Comment[]>([
-    {
-      id: '1',
-      username: 'JaneSmith',
-      profileImage: '/placeholder.svg?height=40&width=40',
-      content: 'Great meal plan! I might try this tomorrow.',
-      timestamp: '2 hours ago'
+  const { data: commentList = [], isLoading, refetch } = useQuery({
+    queryKey: ['comments', id],
+    queryFn: async () => {
+      const response = await fetch(`/api/posts/${id}/comments`)
+      if (!response.ok) {
+        throw new Error('Failed to fetch comments')
+      }
+      return response.json()
     },
-    {
-      id: '2',
-      username: 'MikeBrown',
-      profileImage: '/placeholder.svg?height=40&width=40',
-      content: 'The salmon dish looks delicious!',
-      timestamp: '1 hour ago'
-    }
-  ])
+    enabled: !!id,
+    staleTime: 1000 * 60 * 5,
+    refetchOnWindowFocus: false
+  })
   const [newComment, setNewComment] = useState('')
 
   const mealImages = {
-    morning: morningImage,
-    afternoon: afternoonImage,
-    evening: eveningImage,
+    morning: mediaUrls?.[0] || '/placeholder.svg',
+    afternoon: mediaUrls?.[1] || '/placeholder.svg',
+    evening: mediaUrls?.[2] || '/placeholder.svg',
   }
 
   const meals = [
-    { time: 'morning' as MealTime, icon: Sun, description: morning },
-    { time: 'afternoon' as MealTime, icon: Cloud, description: afternoon },
-    { time: 'evening' as MealTime, icon: Moon, description: evening },
+    { time: 'morning' as MealTime, icon: Sun, description: mediaUrls?.[0] || '' },
+    { time: 'afternoon' as MealTime, icon: Cloud, description: mediaUrls?.[1] || '' },
+    { time: 'evening' as MealTime, icon: Moon, description: mediaUrls?.[2] || '' },
   ]
 
   const handleImageClick = () => {
@@ -103,19 +143,50 @@ export function UserPostDetail({
     setShowMealDetails(true)
   }
 
-  const handleCommentSubmit = (e: React.FormEvent) => {
+  const handleCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (newComment.trim()) {
-      const comment: Comment = {
-        id: Date.now().toString(),
-        username: 'CurrentUser', // This would normally come from the authenticated user
-        profileImage: '/placeholder.svg?height=40&width=40',
-        content: newComment.trim(),
-        timestamp: 'Just now'
-      }
-      setCommentList([...commentList, comment])
+      await fetch(`/api/posts/${id}/comments`, {
+        method: 'POST',
+        body: JSON.stringify({ content: newComment.trim() }),
+        headers: { 'Content-Type': 'application/json' },
+      })
+      refetch() // Refresh comments after posting
       setNewComment('')
     }
+  }
+
+  const handleDeletePost = async () => {
+    try {
+      const response = await fetch(`/api/posts/${id}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to delete post')
+      }
+
+      // Redirect to the previous page
+      router.back()
+    } catch (error) {
+      console.error('Error deleting post:', error)
+    }
+  }
+
+  const handleDeleteClick = () => {
+    setShowDeleteDialog(true)
+  }
+
+  const handleEditClick = () => {
+    console.log('Edit clicked', { id, content, tags })
+    setEditPostData({
+      id,
+      content,
+      tags: tags || [],
+      mediaUrls
+    })
+    setIsCreatePostOpen(true)
+    setShowDropdown(false)
   }
 
   useEffect(() => {
@@ -140,70 +211,137 @@ export function UserPostDetail({
   }, [])
 
   return (
-    <Card className="w-full overflow-hidden" ref={cardRef}>
-      <div className="relative w-full h-48 group cursor-pointer" onClick={handleImageClick}>
-        <Image
-          src={currentMeal ? mealImages[currentMeal] : morningImage}
-          alt={`${currentMeal || 'morning'} meal`}
-          layout="fill"
-          objectFit="cover"
-        />
-        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-          <div 
-            className="p-1 bg-white rounded-full shadow-md cursor-pointer"
-            onClick={handleOptionClick}
-          >
-            <MoreHorizontal className="w-5 h-5" />
-          </div>
-          {showDropdown && (
+    <>
+      <Card className="w-full overflow-hidden" ref={cardRef}>
+        <div className="relative w-full h-48 group cursor-pointer" onClick={handleImageClick}>
+          <Image
+            src={currentMeal ? mealImages[currentMeal] : mediaUrls?.[0] || '/placeholder.svg'}
+            alt={`${currentMeal || 'morning'} meal`}
+            layout="fill"
+            objectFit="cover"
+          />
+          <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
             <div 
-              ref={dropdownRef}
-              className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-10"
+              className="p-1 bg-white rounded-full shadow-md cursor-pointer"
+              onClick={handleOptionClick}
             >
-              <DropdownMenu username={username} />
+              <MoreHorizontal className="w-5 h-5" />
+            </div>
+            {showDropdown && (
+              <div 
+                ref={dropdownRef}
+                className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-10"
+              >
+                <DropdownMenu 
+                  username={username} 
+                  isCurrentUser={user?.username === username}
+                  onDeleteClick={() => setShowDeleteDialog(true)}
+                  onEditClick={handleEditClick}
+                />
+              </div>
+            )}
+          </div>
+          <div className="absolute bottom-2 left-2 flex flex-col-reverse gap-2">
+            {meals.map((meal, index) => (
+              <div
+                key={meal.time}
+                className={`w-8 h-8 rounded-full bg-white shadow-md flex items-center justify-center cursor-pointer transition-transform duration-200 ease-in-out ${
+                  currentMeal === meal.time ? 'scale-125 z-10' : 'hover:scale-110'
+                }`}
+                onClick={(e) => handleMealIconClick(meal.time, e)}
+              >
+                <meal.icon className="w-5 h-5" />
+              </div>
+            ))}
+          </div>
+          {showMealDetails && currentMeal && (
+            <div className="absolute bottom-2 left-12 right-2 bg-white bg-opacity-90 p-2 rounded shadow-md">
+              <Badge className="mb-1">{currentMeal.charAt(0).toUpperCase() + currentMeal.slice(1)}</Badge>
+              <p className="text-sm">{meals.find(meal => meal.time === currentMeal)?.description}</p>
             </div>
           )}
         </div>
-        <div className="absolute bottom-2 left-2 flex flex-col-reverse gap-2">
-          {meals.map((meal, index) => (
-            <div
-              key={meal.time}
-              className={`w-8 h-8 rounded-full bg-white shadow-md flex items-center justify-center cursor-pointer transition-transform duration-200 ease-in-out ${
-                currentMeal === meal.time ? 'scale-125 z-10' : 'hover:scale-110'
-              }`}
-              onClick={(e) => handleMealIconClick(meal.time, e)}
-            >
-              <meal.icon className="w-5 h-5" />
-            </div>
-          ))}
-        </div>
-        {showMealDetails && currentMeal && (
-          <div className="absolute bottom-2 left-12 right-2 bg-white bg-opacity-90 p-2 rounded shadow-md">
-            <Badge className="mb-1">{currentMeal.charAt(0).toUpperCase() + currentMeal.slice(1)}</Badge>
-            <p className="text-sm">{meals.find(meal => meal.time === currentMeal)?.description}</p>
-          </div>
+        <CardContent className="p-4">
+          <ProfileSection profileImage={profileImage} username={username} userBio={userBio} />
+          <TweetSection tweet={content} />
+          <Separator className="my-2" />
+          <ActionSection likes={likes} reposts={reposts} comments={comments} />
+        </CardContent>
+        <CardContent className="p-4 bg-gray-50">
+          <h3 className="text-lg font-semibold mb-4">Comments</h3>
+          <CommentList comments={commentList} />
+          <CommentForm
+            newComment={newComment}
+            setNewComment={setNewComment}
+            handleCommentSubmit={handleCommentSubmit}
+          />
+        </CardContent>
+        {showDeleteDialog && (
+          <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Delete Post</DialogTitle>
+                <DialogDescription>
+                  Are you sure you want to delete this post? This action cannot be undone.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+                  Cancel
+                </Button>
+                <Button 
+                  variant="destructive" 
+                  onClick={handleDeletePost}
+                >
+                  Delete
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         )}
-      </div>
-      <CardContent className="p-4">
-        <ProfileSection profileImage={profileImage} username={username} userBio={userBio} />
-        <TweetSection tweet={tweet} />
-        <Separator className="my-2" />
-        <ActionSection likes={likes} reposts={reposts} comments={comments} />
-      </CardContent>
-      <CardContent className="p-4 bg-gray-50">
-        <h3 className="text-lg font-semibold mb-4">Comments</h3>
-        <CommentList comments={commentList} />
-        <CommentForm
-          newComment={newComment}
-          setNewComment={setNewComment}
-          handleCommentSubmit={handleCommentSubmit}
-        />
-      </CardContent>
-    </Card>
+      </Card>
+
+      <CreatePostDialog 
+        open={isCreatePostOpen}
+        onOpenChange={setIsCreatePostOpen}
+        initialData={editPostData}
+        isEditing={true}
+      />
+    </>
   )
 }
 
-function DropdownMenu({ username }: { username: string }) {
+function DropdownMenu({ 
+  username, 
+  isCurrentUser,
+  onDeleteClick,
+  onEditClick
+}: { 
+  username: string; 
+  isCurrentUser: boolean;
+  onDeleteClick: () => void;
+  onEditClick: () => void;
+}) {
+  if (isCurrentUser) {
+    return (
+      <div className="py-1">
+        <DropdownItem icon={<BookmarkPlus className="w-4 h-4 mr-2 flex-shrink-0" />} text="Save" />
+        <DropdownItem icon={<Share2 className="w-4 h-4 mr-2 flex-shrink-0" />} text="Share" />
+        <DropdownItem 
+          icon={<Edit className="w-4 h-4 mr-2 flex-shrink-0" />} 
+          text="Edit post" 
+          onClick={() => onEditClick?.()}
+        />
+        <DropdownItem 
+          icon={<Trash2 className="w-4 h-4 mr-2 flex-shrink-0 text-red-500" />} 
+          text="Delete" 
+          className="text-red-500 hover:bg-red-50"
+          onClick={onDeleteClick}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="py-1">
       <DropdownItem icon={<X className="w-4 h-4 mr-2 flex-shrink-0" />} text="Not interested" />
@@ -211,19 +349,33 @@ function DropdownMenu({ username }: { username: string }) {
       <DropdownItem icon={<BookmarkPlus className="w-4 h-4 mr-2 flex-shrink-0" />} text="Save" />
       <DropdownItem icon={<Flag className="w-4 h-4 mr-2 flex-shrink-0" />} text="Report" />
     </div>
-  )
+  );
 }
 
-function DropdownItem({ icon, text }: { icon: React.ReactNode; text: string }) {
+function DropdownItem({ 
+  icon, 
+  text, 
+  className = "",
+  onClick
+}: { 
+  icon: React.ReactNode; 
+  text: string; 
+  className?: string;
+  onClick?: () => void;
+}) {
   return (
     <button
-      className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900"
+      className={`flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900 ${className}`}
       role="menuitem"
+      onClick={(e) => {
+        e.stopPropagation()
+        onClick?.()
+      }}
     >
       {icon}
       <span className="truncate">{text}</span>
     </button>
-  )
+  );
 }
 
 function ProfileSection({ profileImage, username, userBio }: { profileImage: string; username: string; userBio: string }) {
@@ -231,11 +383,16 @@ function ProfileSection({ profileImage, username, userBio }: { profileImage: str
     <div className="flex items-center justify-between mb-3">
       <div className="flex items-center">
         <Avatar className="h-10 w-10 mr-2">
-          <AvatarImage src={profileImage} alt={username} />
-          <AvatarFallback>{username.charAt(0)}</AvatarFallback>
+          <AvatarImage 
+            src={profileImage || ''} 
+            alt={username || 'User'} 
+          />
+          <AvatarFallback>
+            {username ? username.charAt(0).toUpperCase() : '?'}
+          </AvatarFallback>
         </Avatar>
         <div className="flex flex-col">
-          <span className="font-semibold">{username}</span>
+          <span className="font-semibold">{username || 'Anonymous'}</span>
           <span className="text-sm text-gray-500">{userBio}</span>
         </div>
       </div>
@@ -277,13 +434,15 @@ function CommentList({ comments }: { comments: Comment[] }) {
       {comments.map((comment) => (
         <div key={comment.id} className="flex items-start space-x-3">
           <Avatar className="h-8 w-8">
-            <AvatarImage src={comment.profileImage} alt={comment.username} />
-            <AvatarFallback>{comment.username[0]}</AvatarFallback>
+            <AvatarImage src={comment.profiles?.avatar_url} alt={comment.profiles?.username} />
+            <AvatarFallback>
+              {comment.profiles?.username?.[0]?.toUpperCase() || '?'}
+            </AvatarFallback>
           </Avatar>
           <div className="flex-1">
             <div className="flex items-center space-x-2">
-              <span className="font-semibold">{comment.username}</span>
-              <span className="text-xs text-gray-500">{comment.timestamp}</span>
+              <span className="font-semibold">{comment.profiles?.username || 'Anonymous'}</span>
+              <span className="text-xs text-gray-500">{comment.created_at}</span>
             </div>
             <p className="text-sm text-gray-700 mt-1">{comment.content}</p>
           </div>
@@ -321,32 +480,6 @@ function CommentForm({
         </Button>
       </div>
     </form>
-  )
-}
-
-export default function UserPostDetailPage() {
-  // Sample data for the UserPostDetail component
-  const sampleData = {
-    morningImage: "/placeholder.svg?height=300&width=400",
-    afternoonImage: "/placeholder.svg?height=300&width=400",
-    eveningImage: "/placeholder.svg?height=300&width=400",
-    morning: "Oatmeal with fresh berries",
-    afternoon: "Grilled chicken salad",
-    evening: "Baked salmon with roasted vegetables",
-    profileImage: "/placeholder.svg?height=40&width=40",
-    username: "JohnDoe",
-    userBio: "Food enthusiast | Healthy living",
-    tweet: "Just finished my meal prep for the day! Excited to try out these new recipes. #HealthyEating #MealPrep",
-    likes: 42,
-    reposts: 7,
-    comments: 15,
-  }
-
-  return (
-    <div className="container mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-4">User Post Detail</h1>
-      <UserPostDetail {...sampleData} />
-    </div>
   )
 }
 

@@ -62,6 +62,8 @@ export default function DashboardPage() {
   const [files, setFiles] = useState<File[]>([])
   const supabase = createClientComponentClient()
   const [user, setUser] = useState<User | null>(null)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editingPostId, setEditingPostId] = useState<number | null>(null)
 
   useEffect(() => {
     const getUser = async () => {
@@ -181,13 +183,23 @@ export default function DashboardPage() {
 
   const isExpanded = tagInputs.length > 0
 
+  const handleEditPost = (post: PostData & { id: number }) => {
+    setPostData({
+      content: post.content,
+      tags: post.tags || [],
+    })
+    setFiles([]) // Reset files or load existing media
+    setIsEditing(true)
+    setEditingPostId(post.id)
+    setIsCreatePostOpen(true)
+  }
+
   const handleCreatePost = async () => {
     try {
       if (!user) throw new Error('User not authenticated')
 
-      // First upload any media files to Supabase Storage
+      // Handle media uploads as before
       const mediaUrls = []
-      
       if (files.length > 0) {
         for (const file of files) {
           const fileExt = file.name.split('.').pop()
@@ -208,9 +220,12 @@ export default function DashboardPage() {
         }
       }
 
-      // Create the post
-      const response = await fetch('/api/posts', {
-        method: 'POST',
+      // Choose endpoint based on whether we're editing or creating
+      const endpoint = isEditing ? `/api/posts/${editingPostId}` : '/api/posts'
+      const method = isEditing ? 'PUT' : 'POST'
+
+      const response = await fetch(endpoint, {
+        method,
         headers: {
           'Content-Type': 'application/json',
         },
@@ -222,19 +237,18 @@ export default function DashboardPage() {
       })
 
       if (!response.ok) {
-        throw new Error('Failed to create post')
+        throw new Error(`Failed to ${isEditing ? 'update' : 'create'} post`)
       }
 
       // Reset form and close dialog
       setPostData({ content: '', tags: [] })
       setFiles([])
+      setIsEditing(false)
+      setEditingPostId(null)
       setIsCreatePostOpen(false)
       
-      // Optionally refresh the posts list
-      
     } catch (error) {
-      console.error('Error creating post:', error)
-      // Show error message to user
+      console.error(`Error ${isEditing ? 'updating' : 'creating'} post:`, error)
     }
   }
 
@@ -247,7 +261,9 @@ export default function DashboardPage() {
           }`}
         >
           <DialogHeader className="flex flex-row justify-between items-center">
-            <DialogTitle>Create New Post</DialogTitle>
+            <DialogTitle>
+              {isEditing ? 'Edit Post' : 'Create New Post'}
+            </DialogTitle>
             {isExpanded && (
               <Button
                 variant="ghost"

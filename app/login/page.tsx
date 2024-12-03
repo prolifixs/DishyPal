@@ -16,33 +16,41 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  
+  console.log('Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL)
+  
   const supabase = createClientComponentClient()
 
-  const handleSignUp = async (e: React.FormEvent) => {
+  const handleSignUp = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
-
+    
     try {
-      const { data, error } = await supabase.auth.signUp({
+      if (!email || !password) {
+        throw new Error('Email and password are required')
+      }
+      
+      if (password.length < 6) {
+        throw new Error('Password must be at least 6 characters')
+      }
+
+      const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
         }
       })
 
-      if (error) {
-        console.error('Signup error:', error)
-        throw error
-      }
+      if (signUpError) throw signUpError
 
-      if (data.user) {
-        alert('Check your email for the confirmation link!')
+      if (data?.user) {
+        setError('Please check your email for the confirmation link')
       }
     } catch (error) {
       console.error('Signup error:', error)
-      setError(error instanceof Error ? error.message : 'An error occurred during signup')
+      setError(error instanceof Error ? error.message : 'Failed to sign up')
     } finally {
       setLoading(false)
     }
@@ -54,16 +62,22 @@ export default function LoginPage() {
     setError(null)
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
-      if (error) throw error
+      if (error) {
+        if (error.message.includes('Invalid login credentials')) {
+          throw new Error('Invalid email or password. Please try again or sign up if you don\'t have an account.')
+        }
+        throw error
+      }
 
-      window.location.href = '/'
+      router.push('/')
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'An error occurred')
+      console.error('Login error:', error)
+      setError(error instanceof Error ? error.message : 'An error occurred during sign in')
     } finally {
       setLoading(false)
     }

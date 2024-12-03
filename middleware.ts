@@ -4,27 +4,20 @@ import type { NextRequest } from 'next/server'
 
 const publicPaths = ['/login', '/auth/callback']
 
-export async function middleware(request: NextRequest) {
-  if (publicPaths.some(path => request.nextUrl.pathname.startsWith(path))) {
+export async function middleware(req: NextRequest) {
+  if (publicPaths.some(path => req.nextUrl.pathname.startsWith(path))) {
     return NextResponse.next()
   }
 
   const res = NextResponse.next()
-  const supabase = createMiddlewareClient({ req: request, res })
-  const { data: { session } } = await supabase.auth.getSession()
-
-  if (!session) {
-    return NextResponse.redirect(new URL('/login', request.url))
-  }
+  const supabase = createMiddlewareClient({ req, res })
+  await supabase.auth.getSession()
 
   return res
 }
 
 export const config = {
   matcher: [
-    /*
-     * Match all paths except static files
-     */
     '/((?!api|_next/static|_next/image|favicon.ico).*)'
   ]
 } 
